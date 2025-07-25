@@ -1,192 +1,195 @@
-local p = game:GetService("Players")
-local r = game:GetService("RunService")
-local u = game:GetService("UserInputService")
-local s = game:GetService("StarterGui")
-local l = p.LocalPlayer
-local c = workspace.CurrentCamera
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+local StarterGui = game:GetService("StarterGui")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
 
-local pred = 0.21
-local key = Enum.KeyCode.Q
-local parts = {"Head", "UpperTorso", "LowerTorso", "LeftUpperArm", "RightUpperArm"}
-local i = 1
-local aim = parts[i]
-local hp = nil
+local prediction = 0.21
+local lockKey = Enum.KeyCode.Q
+local bodyParts = {"Head", "UpperTorso", "LowerTorso", "LeftUpperArm", "RightUpperArm"}
+local partIndex = 1
+local aimPartName = bodyParts[partIndex]
+local currentHealth = nil
 
+-- Notification
 pcall(function()
-	s:SetCore("SendNotification", {
+	StarterGui:SetCore("SendNotification", {
 		Title = "Kamcams Script",
 		Text = "Thank you for using Kamcams! Join our Discord 💬",
-		Duration = 5
+		Duration = 5,
 	})
 end)
 
-local g = Instance.new("ScreenGui", game.CoreGui)
-g.Name = "ScriptlifeCamLock"
-g.ResetOnSpawn = false
+-- GUI setup
+local gui = Instance.new("ScreenGui", game.CoreGui)
+gui.Name = "ScriptlifeCamLock"
+gui.ResetOnSpawn = false
 
--- Container Frame to hold both button and input box
-local container = Instance.new("Frame", g)
-container.Size = UDim2.new(0, 180, 0, 100)
-container.Position = UDim2.new(0.5, -90, 0.1, 0)
-container.BackgroundTransparency = 0.6
-container.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-container.Active = true
-container.Draggable = true
+local frame = Instance.new("Frame", gui)
+frame.Size = UDim2.new(0, 230, 0, 120)
+frame.Position = UDim2.new(0.5, -115, 0.1, 0)
+frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+frame.BorderSizePixel = 0
+frame.Draggable = true
+frame.Active = true
 
-local b = Instance.new("TextButton", container)
-b.Size = UDim2.new(0, 150, 0, 60)
-b.Position = UDim2.new(0.5, -75, 0, 0)
-b.AnchorPoint = Vector2.new(0.5, 0)
-b.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-b.TextColor3 = Color3.new(1, 1, 1)
-b.Text = "Scriptlife 🔒"
-b.TextSize = 22
-b.Font = Enum.Font.SourceSansBold
-b.AutoButtonColor = false
+local toggleButton = Instance.new("TextButton", frame)
+toggleButton.Size = UDim2.new(0, 200, 0, 40)
+toggleButton.Position = UDim2.new(0.5, -100, 0, 5)
+toggleButton.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+toggleButton.TextColor3 = Color3.new(1, 1, 1)
+toggleButton.Text = "Scriptlife 🔒"
+toggleButton.TextSize = 22
+toggleButton.Font = Enum.Font.SourceSansBold
+toggleButton.Draggable = false
 
-local inputBox = Instance.new("TextBox", container)
-inputBox.Size = UDim2.new(0, 150, 0, 30)
-inputBox.Position = UDim2.new(0.5, -75, 0, 65)
-inputBox.AnchorPoint = Vector2.new(0.5, 0)
-inputBox.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-inputBox.TextColor3 = Color3.new(1, 1, 1)
-inputBox.Text = tostring(pred)
-inputBox.PlaceholderText = "Enter prediction (0-1)"
-inputBox.ClearTextOnFocus = false
-inputBox.Font = Enum.Font.SourceSans
-inputBox.TextSize = 18
+local predBox = Instance.new("TextBox", frame)
+predBox.Size = UDim2.new(0, 200, 0, 35)
+predBox.Position = UDim2.new(0.5, -100, 0, 55)
+predBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+predBox.PlaceholderText = "Prediction (e.g. 0.21)"
+predBox.TextColor3 = Color3.new(1, 1, 1)
+predBox.Font = Enum.Font.SourceSans
+predBox.TextSize = 20
+predBox.Text = tostring(prediction)
 
-local locking = false
-local targ = nil
-local hl = nil
+-- State
+local isLocking = false
+local target = nil
+local highlight = nil
 
-local function closest()
-	local cl, nilDist = nil, math.huge
-	for _, pl in ipairs(p:GetPlayers()) do
-		if pl ~= l and pl.Character then
-			local rt = pl.Character:FindFirstChild("HumanoidRootPart")
-			if rt then
-				local pos, on = c:WorldToViewportPoint(rt.Position)
-				if on then
-					local dist = (Vector2.new(pos.X, pos.Y) - Vector2.new(c.ViewportSize.X / 2, c.ViewportSize.Y / 2)).Magnitude
-					if dist < nilDist then
-						cl = pl
-						nilDist = dist
+-- Functions
+local function getClosestPlayer()
+	local closestPlayer, shortestDistance = nil, math.huge
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player ~= LocalPlayer and player.Character then
+			local root = player.Character:FindFirstChild("HumanoidRootPart")
+			if root then
+				local pos, onScreen = Camera:WorldToViewportPoint(root.Position)
+				if onScreen then
+					local dist = (Vector2.new(pos.X, pos.Y) - Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)).Magnitude
+					if dist < shortestDistance then
+						closestPlayer = player
+						shortestDistance = dist
 					end
 				end
 			end
 		end
 	end
-	return cl
+	return closestPlayer
 end
 
-local function down()
-	if not targ or not targ.Character then return true end
-	local hum = targ.Character:FindFirstChildOfClass("Humanoid")
-	if not hum or hum.Health <= 0 or hum.Health < 3 then return true end
-	local rt = targ.Character:FindFirstChild("HumanoidRootPart") or targ.Character:FindFirstChild("LowerTorso")
-	if rt and (rt:FindFirstChild("Velocity") and rt.Velocity.Magnitude < 2) then
-		if targ.Character:FindFirstChild("Ragdoll") or targ.Character:FindFirstChild("KnockedOut") then return true end
+local function isTargetDown()
+	if not target or not target.Character then return true end
+	local humanoid = target.Character:FindFirstChildOfClass("Humanoid")
+	if not humanoid or humanoid.Health <= 0 or humanoid.Health < 3 then return true end
+	local root = target.Character:FindFirstChild("HumanoidRootPart") or target.Character:FindFirstChild("LowerTorso")
+	if root and (root:FindFirstChild("Velocity") and root.Velocity.Magnitude < 2) then
+		if target.Character:FindFirstChild("Ragdoll") or target.Character:FindFirstChild("KnockedOut") then
+			return true
+		end
 	end
 	return false
 end
 
-local function addHL(ch)
-	if hl then hl:Destroy() end
-	hl = Instance.new("Highlight", ch)
-	hl.Name = "ScriptlifeHighlight"
-	hl.FillColor = Color3.new(1, 0, 0)
-	hl.FillTransparency = 0.5
-	hl.OutlineTransparency = 1
+local function addHighlight(char)
+	if highlight then highlight:Destroy() end
+	highlight = Instance.new("Highlight", char)
+	highlight.Name = "ScriptlifeHighlight"
+	highlight.FillColor = Color3.new(1, 0, 0)
+	highlight.FillTransparency = 0.5
+	highlight.OutlineTransparency = 1
 end
 
-local function remHL()
-	if hl then hl:Destroy() hl = nil end
+local function removeHighlight()
+	if highlight then
+		highlight:Destroy()
+		highlight = nil
+	end
 end
 
-local function toggle()
-	if locking then
-		locking = false
-		remHL()
-		targ = nil
-		b.Text = "Scriptlife 🔓"
-		b.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+local function toggleLock()
+	if isLocking then
+		isLocking = false
+		removeHighlight()
+		target = nil
+		toggleButton.Text = "Scriptlife 🔓"
+		toggleButton.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 	else
-		local newT = closest()
-		if newT and newT.Character then
-			locking = true
-			targ = newT
-			local hum = newT.Character:FindFirstChildOfClass("Humanoid")
-			if hum then hp = hum.Health end
-			addHL(newT.Character)
-			b.Text = "Scriptlife 🔒"
-			b.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
+		local newTarget = getClosestPlayer()
+		if newTarget and newTarget.Character then
+			isLocking = true
+			target = newTarget
+			local humanoid = newTarget.Character:FindFirstChildOfClass("Humanoid")
+			if humanoid then
+				currentHealth = humanoid.Health
+			end
+			addHighlight(newTarget.Character)
+			toggleButton.Text = "Scriptlife 🔒"
+			toggleButton.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
 		end
 	end
 end
 
-b.MouseButton1Click:Connect(toggle)
-u.InputBegan:Connect(function(inp, gp)
-	if not gp and inp.KeyCode == key then toggle() end
-end)
-
-inputBox.FocusLost:Connect(function(enterPressed)
-	if enterPressed then
-		local val = tonumber(inputBox.Text)
-		if val and val > 0 and val < 1 then
-			pred = val
-			inputBox.TextColor3 = Color3.fromRGB(0, 255, 0)
-			print("Prediction updated to:", pred)
-		else
-			inputBox.TextColor3 = Color3.fromRGB(255, 0, 0)
-			print("Invalid prediction input")
-		end
+-- Events
+toggleButton.MouseButton1Click:Connect(toggleLock)
+UIS.InputBegan:Connect(function(input, gp)
+	if not gp and input.KeyCode == lockKey then
+		toggleLock()
 	end
 end)
 
-r.RenderStepped:Connect(function()
-	if locking and targ and targ.Character then
-		local hum = targ.Character:FindFirstChildOfClass("Humanoid")
-		if not hum then return end
+predBox.FocusLost:Connect(function()
+	local num = tonumber(predBox.Text)
+	if num then
+		prediction = num
+	end
+end)
 
-		if down() then
-			locking = false
-			remHL()
-			targ = nil
-			b.Text = "Scriptlife 🔓"
-			b.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+RunService.RenderStepped:Connect(function()
+	if isLocking and target and target.Character then
+		local humanoid = target.Character:FindFirstChildOfClass("Humanoid")
+		if not humanoid then return end
+
+		if isTargetDown() then
+			isLocking = false
+			removeHighlight()
+			target = nil
+			toggleButton.Text = "Scriptlife 🔓"
+			toggleButton.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 			return
 		end
 
-		local myHum = l.Character and l.Character:FindFirstChildOfClass("Humanoid")
-		if myHum and myHum.Health < 4 then
-			locking = false
-			remHL()
-			targ = nil
-			b.Text = "Scriptlife 🔓"
-			b.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+		local myHumanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+		if myHumanoid and myHumanoid.Health < 4 then
+			isLocking = false
+			removeHighlight()
+			target = nil
+			toggleButton.Text = "Scriptlife 🔓"
+			toggleButton.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 			return
 		end
 
-		if hum.Health < hp then
-			i = (i % #parts) + 1
-			aim = parts[i]
-			hp = hum.Health
+		if humanoid.Health < currentHealth then
+			partIndex = (partIndex % #bodyParts) + 1
+			aimPartName = bodyParts[partIndex]
+			currentHealth = humanoid.Health
 		end
 
-		local ap = targ.Character:FindFirstChild(aim)
-		local hd = targ.Character:FindFirstChild("Head")
-		if ap and hd then
-			local v = ap.Velocity
-			local pos = (ap.Position + hd.Position) / 2
-			local predPos = pos + v * pred
+		local aimPart = target.Character:FindFirstChild(aimPartName)
+		local head = target.Character:FindFirstChild("Head")
+		if aimPart and head then
+			local velocity = aimPart.Velocity
+			local centerPos = (aimPart.Position + head.Position) / 2
+			local predictedPos = centerPos + velocity * prediction
 			local shake = Vector3.new(
 				math.random(-2, 2) / 500,
 				math.random(-2, 2) / 500,
 				math.random(-2, 2) / 500
 			)
-			local camPos = c.CFrame.Position
-			c.CFrame = CFrame.new(camPos, predPos + shake)
+			local camPos = Camera.CFrame.Position
+			Camera.CFrame = CFrame.new(camPos, predictedPos + shake)
 		end
 	end
 end)
